@@ -1,0 +1,246 @@
+#! /usr/bin/env zsh
+
+emulate -L zsh
+setopt err_exit nounset pipefail extended_glob
+
+
+
+# ------------------------- constants ------------------------- #
+
+typeset -r me=$0:t
+typeset -r doDbg=1
+
+typeset -r apiUrl='https://en.wikipedia.org/w/api.php'
+typeset -r url2page='(#b)*wikipedia.org/wiki/(*)'
+
+typeset -rA \
+examplePage=(
+      [default]=Subtyping
+  [url_default]=https://en.wikipedia.org/wiki/Subtyping
+  [doesntExist]=French_military_victories        # cause there are none
+  [_does_exist]=Sinking_of_the_Rainbow_Warrior ) # well, there is _one_ 
+
+typeset -rA \
+query_base=(
+         [action]=parse
+           [prop]='wikitext|displaytitle'
+         [format]=json
+  [formatversion]=2
+      [redirects]=true )
+
+typeset -ra \
+wikitext_dryrun=(
+  "A [[pagelink]], '''bold''', "'{{macro |param=arg}}'
+  '==heading=='
+  ':<math>N = R_* \cdot f_\mathrm{p}</math>'
+  'inline math: <math>f_i</math>' )
+
+typeset -r \
+wikitext_dryrun_jsonQuoted=$(jq -cRs <<< "${(F)wikitext_dryrun}")
+
+typeset -T     \
+reply_dryrun \
+reply_dryrun_arr=(
+  '{"parse":'
+     '{"title":"Subtyping",'
+      '"pageid":213508,'
+      '"displaytitle":"<span class=\"cls\">Subtyping</span>",'
+      '"wikitext":'$wikitext_dryrun_jsonQuoted
+     '}'
+  # ',"error":"Y"'
+  '}'
+  ) $'\n'
+
+
+
+# ------------------------- help text ------------------------- #
+
+zmodload zsh/parameter
+if (($+commands[bat])) && [[ ${NO_COLOR-} -ne 1 ]]
+then  _h_bat()  bat -p --color=always -l sh
+      _h_sec()  print -rPf '\n%s%s%s' %B $1 %b
+else  _h_bat()  cat
+      _h_sec()  print -rf '\n%s' $1
+fi
+
+help="
+Fetch the wikitext of a wikipedia page
+  
+$(_h_sec SYNOPSIS)$(_h_bat <<<"
+
+  $me [-p|--plain] [-m|--markdown] [--pager[=bat]] <page>")
+
+$(_h_sec DESCRIPTION)
+
+  <page> is interpreted to be
+
+      a page ID,      if integer
+      a url,          if it looks like a Wikipedia url
+      a page name     otherwise
+    
+      (If not provided, an example page is fetched.)
+$(fmt <<<'
+  The wikitext is printed to stdout, or displayed with a pager depending on used options.
+
+  If `bat` is selected as the pager, it is invoked with arguments providing syntax highlighting for the used output format (wikitext, markdown).')
+
+$(_h_sec OPTIONS)
+
+      --section=N      only the indicated page section (integer)
+      --to=md          convert (pandoc) the wikitext to markdown
+      --to=txt         convert (pandoc) the wikitext to plaintext
+  -p, --pager          display with \$PAGER (or less if unset)
+  -b, --pager=bat      display with bat
+  -n, --dry-run        no request, instead use a hard-coded example API reply
+  -h, --help           print help
+
+$(_h_sec EXAMPLES)$(_h_bat <<<"
+
+  # These will print the same wikitext:
+  $me $examplePage[url_default]
+  $me $examplePage[default]
+  $me 213508           # (the page ID of 'Subtyping')
+  $me                  # ('Subtyping' is the default page)
+
+  # Let pandoc convert the wikitext to markdown, page with bat:
+  $me --to=md --pager=bat $examplePage[default]
+")
+
+$(_h_sec MISC)
+$(fmt <<<'
+  If `bat` is selected as the pager, it is invoked with arguments providing syntax highlighting for the used output format (wikitext, markdown).')
+
+  Rudimentary zsh completions can be generated with
+$(_h_bat <<<"
+      compdef _gnu_generic $me
+")"
+
+
+
+
+# ------------------------- functions ------------------------- #
+
+main() {
+
+  local -a fmter=()
+  local    section='' to='' pager=() pageArg='' dry=0
+  while (( $# > 0 ))
+  do
+    case $1 in
+       ( (#b)--section=(<->) ) section=$match
+    ;; (     --section=(*)   ) die 'non-integer option-arg: %s' $1
+    ;; (     --to=md         ) to=md; fmter=(pandoc_ markdown_mmd)
+    ;; (     --to=txt        ) to=txt fmter=(pandoc_ plain       )
+    ;; (     --to=*          ) die 'illegal --to option-arg: %s' $1
+    ;; (  -p|--pager         ) pager=( ${=PAGER:-less} )
+    ;; (  -b|--pager=bat     ) pager=( bat             )
+    ;; (  -n|--dry-run       ) dry=1
+    ;; (  -h|--help          ) echo; <<< $help; echo; echo; exit 0
+    ;; (  -*|--*             ) die 'unknown option "%s"' $1
+    ;; (   *                 ) pageArg=${1%%&*}
+    ;;
+    esac
+    shift
+  done
+
+  local -A query=( ${(kv)query_base} )
+  (($#section)) && query+=( [section]=$section )
+  case $pageArg in
+       ( [0-9]##    )  query+=( [pageid]=$pageArg              )
+    ;; ( $~url2page )  query+=(   [page]=$match                )
+    ;; ( ''         )  query+=(   [page]=$examplePage[default] )
+    ;; ( *          )  query+=(   [page]=$pageArg              )
+    ;; esac
+  
+  [[ $pager == bat ]] \
+  && pager=( bat_ ${to:-wiki} \
+                  ${query[page]-${query[pageid]}} )
+  
+  local reply
+  runRequest query $dry | read_ reply
+
+  local title wikitxt wikitext
+  !<<< $reply   jq -re '.error'             |grep -v '^null$'|| die_replyErr
+   <<< $reply   jq -re '.parse.displaytitle'|read_ title     || wrn_replyT
+   <<< $reply   jq -re '.parse.wikitext'    |read_ wikitxt   || die_replyWtxt
+   <<< $wikitxt addTitle $title             |read_ wikitext
+
+  case "$(($#fmter>=1)),$(($#pager>=1))" in
+    (0,0) <<< $wikitext                  ;;
+    (0,1) <<< $wikitext          $pager  ;;
+    (1,0) <<< $wikitext $fmter           ;;
+    (1,1) <<< $wikitext $fmter | $pager  ;;
+  esac
+
+  }
+
+
+runRequest() {
+  local n_qry=$1  # name of assoc. with query
+  local   dry=$2  # dry-run? (0/1)
+
+  ((dry)) && msg_dryRun && <<< $reply_dryrun && return
+  
+  local k v; local -a qArr=()
+  foreach k v ( ${(Pkv)n_qry} ) {
+    qArr+=( "$k=$v" ); }
+
+  local urlQuery
+  urlQuery=${apiUrl}?${(j[&])qArr}
+  
+  curl --silent --fail --location $urlQuery
+  }
+
+
+addTitle() {
+  local title=${1-}
+  if [[ -n $title ]]
+  then
+    local title_cleaned=${${(S)title//<*>/}//$'\n'/}
+    [[ $title_cleaned != null ]] && printf '= %s =\n\n%s' $title_cleaned
+  fi
+  cat
+}
+
+
+msg_dryRun   () msg '*** DRY-RUN *** - no request; using hard-coded reply'
+die_replyErr () die '"error" key in reply'
+wrn_replyT   () wrn "couldn't extract title from reply"
+die_replyWtxt() die "couldn't extract wikitext from reply"
+
+
+out() { print -P -f "%s[%s]%s "   %F{245} $me       %f
+        print -P -f "%s%s%s"    %B%F{$2}  ${1:+$1 } %f%b
+        printf " ${3}\n\n" ${@:4};                        } >&2
+
+msg() { out ''      117 $1             ${@:2};            }
+wrn() { out WARNING 178 ${1-}          ${@:2};            }
+die() { out ERROR    13 ${1-'(fatal)'} ${@:2}; exit 1;    }
+
+
+hlp    () { echo; <<< $help; echo; }
+read_  () { IFS= read -rd '' ${1:?} || true;                   }
+pandoc_() { pandoc --from=mediawiki --to=${1:?}+raw_attribute; }
+bat_   () { bat    --language=${1:?} --file-name=${2:?};       }
+
+
+if ((doDbg))
+then
+  dbg_    ()  { printf $1 ${@:2}; echo; }
+  dbgVars_()  { foreach v ($@) { dbgVar_ $v; }; }
+  dbgVar_ ()  { case $1 in (-*) typeset -p1 ${@:2} | head $1 ;;
+                           ( *) typeset -p1 ${@}             ;;
+                esac | bat -p -l sh; }
+  dbg    \
+  dbgVars\
+  dbgVar  () { print -P -f '%sDBG:%s ' %B%F{108} %f%b
+               ${0}_ "$@" | { read -erd $'\n' || :; sed 's/^/     /'; }; } >&2
+else
+  dbg dbgVar dbgVars () :
+fi
+
+
+
+# --------------------------- do it --------------------------- #
+
+main "$@"
