@@ -1,0 +1,37 @@
+#! /usr/bin/env zsh
+setopt nounset pipefail
+
+dedent() sed 's/^ *//'
+mgrep () pcre2grep -O '$1' -M '(?sx)'${1:?}  
+
+tagline     () mgrep '\A\s*         ([^\n]+)         .*\Z    '
+examples    () mgrep '^EXAMPLES\n+  (.*)             \n+MISC$'
+misc        () mgrep '^MISC\n+      (.*)             compdef '
+misc_compdef() mgrep '^\s*          (compdef[^\n]+)  .*\Z    '
+
+h=$(mgrep '\A (?:\n*) (.*)')
+
+
+cat <<EOF
+# \`wikiget\`
+
+_$(<<< $h tagline)_
+
+$(<<< $h misc | dedent)
+\`\`\`sh
+$(<<< $h misc_compdef | dedent)
+\`\`\`
+
+## Examples
+
+\`\`\`sh
+$( <<< $h examples | dedent )
+\`\`\`
+
+## \`wikiget --help\`
+
+\`\`\`
+${h}
+\`\`\`
+
+EOF

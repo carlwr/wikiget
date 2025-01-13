@@ -91,7 +91,7 @@ $(_h_sec OPTIONS)
       --to=txt         convert (pandoc) the wikitext to plaintext
   -p, --pager          display with \$PAGER (or less if unset)
   -b, --pager=bat      display with bat
-  -n, --dry-run        no request, instead use a hard-coded example API reply
+  -n, --dry-run        no request; use a hard-coded example API reply
   -h, --help           print help
 
 $(_h_sec EXAMPLES)$(_h_bat <<<"
