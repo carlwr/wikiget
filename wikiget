@@ -27,6 +27,8 @@ query_base=(
          [format]=json
   [formatversion]=2
       [redirects]=true )
+  # API ref.:
+  # https://www.mediawiki.org/w/api.php?action=help&modules=parse
 
 typeset -ra \
 wikitext_dryrun=(
