@@ -2,16 +2,7 @@
 
 _Fetch the wikitext of a wikipedia page_
 
-If `bat` is selected as the pager, it is invoked with arguments
-providing syntax highlighting for the used output format (wikitext,
-markdown).
-
-Rudimentary zsh completions can be generated with
-```sh
-compdef _gnu_generic wikiget
-```
-
-## Examples
+Examples:
 
 ```sh
 # These will print the same wikitext:
@@ -23,6 +14,21 @@ wikiget                  # ('Subtyping' is the default page)
 # Let pandoc convert the wikitext to markdown, page with bat:
 wikiget --to=md --pager=bat Subtyping
 ```
+
+If `bat` is selected as the pager, it is invoked with arguments
+providing syntax highlighting for the used output format (wikitext,
+markdown).
+
+Rudimentary zsh completions can be generated with
+
+```sh
+compdef _gnu_generic wikiget
+```
+
+## Requirements
+
+* `jq`
+* _optional:_ `bat`, `pandoc`
 
 ## `wikiget --help`
 
