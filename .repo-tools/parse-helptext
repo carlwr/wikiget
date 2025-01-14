@@ -33,7 +33,7 @@ $(<<< $h misc_compdef | dedent)
 
 ## Requirements
 
-* \`jq\`
+* \`zsh\`, \`jq\`
 * _optional:_ \`bat\`, \`pandoc\`
 
 ## \`wikiget --help\`

@@ -27,7 +27,7 @@ compdef _gnu_generic wikiget
 
 ## Requirements
 
-* `jq`
+* `zsh`, `jq`
 * _optional:_ `bat`, `pandoc`
 
 ## `wikiget --help`
