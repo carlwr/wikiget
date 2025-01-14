@@ -33,7 +33,7 @@ query_base=(
 typeset -ra \
 wikitext_dryrun=(
   "A [[pagelink]], '''bold''', "'{{macro |param=arg}}'
-  '==heading=='
+  '== subsection =='
   ':<math>N = R_* \cdot f_\mathrm{p}</math>'
   'inline math: <math>f_i</math>' )
 
@@ -66,6 +66,7 @@ else  _h_bat()  cat
 fi
 
 help="
+
 Fetch the wikitext of a wikipedia page
   
 $(_h_sec SYNOPSIS)$(_h_bat <<<"
@@ -115,30 +116,29 @@ $(fmt <<<'
   Rudimentary zsh completions can be generated with
 $(_h_bat <<<"
       compdef _gnu_generic $me
+
 ")"
-
-
 
 
 # ------------------------- functions ------------------------- #
 
 main() {
 
-  local -a fmter=()
-  local    section='' to='' pager=() pageArg='' dry=0
+  local -a fmter=(cat) pager=(cat)
+  local    section='' to='' pageArg='' dry=0
   while (( $# > 0 ))
   do
     case $1 in
        ( (#b)--section=(<->) ) section=$match
-    ;; (     --section=(*)   ) die 'non-integer option-arg: %s' $1
-    ;; (     --to=md         ) to=md; fmter=(pandoc_ markdown_mmd)
-    ;; (     --to=txt        ) to=txt fmter=(pandoc_ plain       )
-    ;; (     --to=*          ) die 'illegal --to option-arg: %s' $1
-    ;; (  -p|--pager         ) pager=( ${=PAGER:-less} )
-    ;; (  -b|--pager=bat     ) pager=( bat             )
+    ;; (     --to=md         ) fmter=(pandoc_ markdown_mmd) to=md  
+    ;; (     --to=txt        ) fmter=(pandoc_ plain       ) to=txt 
+    ;; (  -p|--pager         ) pager=( ${=PAGER:-less}    )
+    ;; (  -b|--pager=bat     ) pager=( bat                )
     ;; (  -n|--dry-run       ) dry=1
-    ;; (  -h|--help          ) echo; <<< $help; echo; echo; exit 0
-    ;; (  -*|--*             ) die 'unknown option "%s"' $1
+    ;; (  -h|--help          ) <<< $help; exit 0
+    ;; (     --section=(*)   ) die 'illegal option-arg: %s' $1
+    ;; (     --to=*          ) die 'illegal option-arg: %s' $1
+    ;; (  -*|--*             ) die 'unknown option: "%s"' $1
     ;; (   *                 ) pageArg=${1%%&*}
     ;;
     esac
@@ -157,22 +157,11 @@ main() {
   [[ $pager == bat ]] \
   && pager=( bat_ ${to:-wiki} \
                   ${query[page]-${query[pageid]}} )
-  
-  local reply
-  runRequest query $dry | read_ reply
 
-  local title wikitxt wikitext
-  !<<< $reply   jq -re '.error'             |grep -v '^null$'|| die_replyErr
-   <<< $reply   jq -re '.parse.displaytitle'|read_ title     || wrn_replyT
-   <<< $reply   jq -re '.parse.wikitext'    |read_ wikitxt   || die_replyWtxt
-   <<< $wikitxt addTitle $title             |read_ wikitext
-
-  case "$(($#fmter>=1)),$(($#pager>=1))" in
-    (0,0) <<< $wikitext                  ;;
-    (0,1) <<< $wikitext          $pager  ;;
-    (1,0) <<< $wikitext $fmter           ;;
-    (1,1) <<< $wikitext $fmter | $pager  ;;
-  esac
+  runRequest query $dry              \
+  | () { json2wikitext $1; } =(cat)  \
+  | $fmter                           \
+  | $pager
 
   }
 
@@ -193,16 +182,18 @@ runRequest() {
   curl --silent --fail --location $urlQuery
   }
 
+json2wikitext() {
+  local f_json=$1
+  ! jq -re .error              $f_json|grep -v '^null$' || die_replyErr 
+  jq   -re .parse.displaytitle $f_json|putTitle         || wrn_replyT
+  jq   -re .parse.wikitext     $f_json                  || die_replyWtxt
+  }
 
-addTitle() {
-  local title=${1-}
-  if [[ -n $title ]]
-  then
-    local title_cleaned=${${(S)title//<*>/}//$'\n'/}
-    [[ $title_cleaned != null ]] && printf '= %s =\n\n%s' $title_cleaned
-  fi
-  cat
-}
+putTitle() {
+  rmTags() sed 's/<[^>]*>//g'
+  local title=$(rmTags)
+  (( $#title )) && printf '= %s =\n\n%s' $title
+  }
 
 
 msg_dryRun   () msg '*** DRY-RUN *** - no request; using hard-coded reply'
@@ -220,7 +211,6 @@ wrn() { out WARNING 178 ${1-}          ${@:2};            }
 die() { out ERROR    13 ${1-'(fatal)'} ${@:2}; exit 1;    }
 
 
-hlp    () { echo; <<< $help; echo; }
 read_  () { IFS= read -rd '' ${1:?} || true;                   }
 pandoc_() { pandoc --from=mediawiki --to=${1:?}+raw_attribute; }
 bat_   () { bat    --language=${1:?} --file-name=${2:?};       }
@@ -246,3 +236,4 @@ fi
 # --------------------------- do it --------------------------- #
 
 main "$@"
+
