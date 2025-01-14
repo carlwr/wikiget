@@ -1,4 +1,5 @@
 #! /usr/bin/env zsh
+
 setopt nounset pipefail
 
 dedent() sed 's/^ *//'
@@ -9,24 +10,31 @@ examples    () mgrep '^EXAMPLES\n+  (.*)             \n+MISC$'
 misc        () mgrep '^MISC\n+      (.*)             compdef '
 misc_compdef() mgrep '^\s*          (compdef[^\n]+)  .*\Z    '
 
-h=$(mgrep '\A (?:\n*) (.*)')
 
-
+toReadme() {
+############
+## // README
 cat <<EOF
 # \`wikiget\`
 
 _$(<<< $h tagline)_
 
-$(<<< $h misc | dedent)
-\`\`\`sh
-$(<<< $h misc_compdef | dedent)
-\`\`\`
-
-## Examples
+Examples:
 
 \`\`\`sh
 $( <<< $h examples | dedent )
 \`\`\`
+
+$(<<< $h misc | dedent)
+
+\`\`\`sh
+$(<<< $h misc_compdef | dedent)
+\`\`\`
+
+## Requirements
+
+* \`jq\`
+* _optional:_ \`bat\`, \`pandoc\`
 
 ## \`wikiget --help\`
 
@@ -35,3 +43,16 @@ ${h}
 \`\`\`
 
 EOF
+## README //
+############
+}
+
+
+h=$(mgrep '\A (?:\n*) (.*)')  # capture from stdin
+
+case $1 in
+     (--getExamples)  <<< $h examples | dedent
+  ;; (--toReadme   )  toReadme
+  ;; (      *      )  >&2 echo "illegal option: $1"
+  ;;
+esac
