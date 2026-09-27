@@ -51,8 +51,8 @@ DESCRIPTION
     
       (If not provided, an example page is fetched.)
 
-  The wikitext is printed to stdout, or displayed with a pager depending
-  on used options.
+  The wikitext is printed to stdout, or displayed with a pager
+  depending on used options.
 
   If `bat` is selected as the pager, it is invoked with arguments
   providing syntax highlighting for the used output format (wikitext,
